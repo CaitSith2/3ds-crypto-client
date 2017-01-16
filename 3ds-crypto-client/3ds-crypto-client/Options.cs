@@ -1,5 +1,9 @@
-﻿using System.Text;
+﻿using System;
+using System.Net.Mime;
+using System.Text;
 using CommandLine;
+using CommandLine.Text;
+using static System.AppDomain;
 
 namespace _3ds_crypto_client {
     class Options {
@@ -15,12 +19,24 @@ namespace _3ds_crypto_client {
         [Option('m',"mode",HelpText = "The Operation to be performed", Required = true)]
         public CryptoOperation Mode { get; set; }
 
+        [Option]
+        public bool help { get; set; }
+
         [HelpOption]
         public string GetUsage() {
-            var usage = new StringBuilder();
-            usage.AppendLine("Quickstart Application 1.0");
-            usage.AppendLine("Read user manual for usage instructions...");
-            return usage.ToString();
+            var helptext = new HelpText
+            {
+                Heading = new HeadingInfo("3DS Crypto Client", "v1.0"),
+                Copyright = new CopyrightInfo("CaitSith2", 2017),
+                AdditionalNewLineAfterOption = true,
+                AddDashesToOption = true
+            };
+            helptext.AddPreOptionsLine("");
+            helptext.AddPreOptionsLine($"Usage: {CurrentDomain.FriendlyName} options [--help for more information]");
+
+            if(help)
+                helptext.AddOptions(this);
+            return helptext;
         }
     }
 
