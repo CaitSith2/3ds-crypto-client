@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using CommandLine;
 
@@ -16,13 +17,15 @@ namespace _3ds_crypto_client
 
         static void Main(string[] args)
         {
-            Util.NewLogFile("3DS Crypto Client v1.0 - CaitSith2");
             var parser = new Parser();
             if (!parser.ParseArguments(args, opts))
             {
                 Console.WriteLine(opts.GetUsage());
                 return;
             }
+
+            Util.NewLogFile("3DS Crypto Client v1.0", "Copyright (C) 2017 CaitSith2");
+            
             NetworkUtils.SetCryptoIPAddress(IPAddress.Parse(opts.InputIP));
             if (!NetworkUtils.TestCryptoServer())
             {
@@ -32,75 +35,106 @@ namespace _3ds_crypto_client
             switch (opts.Mode)
             {
                 case CryptoOperation.DecryptTitleKeys:
-                    DecryptTitleKeys();
-                    break;
                 case CryptoOperation.EncryptTitleKeys:
-                    EncryptTitleKeys();
+                    CryptTitleKeys(opts.Mode == CryptoOperation.EncryptTitleKeys);
                     break;
             }
             Util.CloseLogFile(true);
         }
 
-        static void EncryptTitleKeys()
+        static void CryptTitleKeys(bool Encrypt)
         {
-            Util.Log("Encrypting Title keys");
-            var titlekeys = File.ReadAllBytes(opts.InputFile);
-            var numkeys = BitConverter.ToInt32(titlekeys, 0);
-            for (var i = 0; i < numkeys; i++)
+            var basefilename = Encrypt ? "decTitleKeys.bin" : "endTitleKeys.bin";
+            var mode = Encrypt ? "En" : "De";
+            Util.Log($"{mode}crypting Title keys");
+            var outfilename = opts.OutputFile == "" ? basefilename : opts.OutputFile;
+            var titlekeys = new TitleKeys(opts.InputFile);
+
+            for (var i = 0; i < titlekeys.Entries.Count; i++)
             {
-                var titleID = new byte[8];
-                var key = new byte[16];
-                var keyIndex = BitConverter.ToInt32(titlekeys, 16 + (32*i));
-
-                Array.Copy(titlekeys, 16 + (32*i) + 8, titleID, 0, 8);
-                Array.Copy(titlekeys, 16 + (32*i) + 16, key, 0, 16);
-
+                var t = titlekeys.Entries[i];
                 var sb = new StringBuilder();
-                foreach (var b in titleID)
+                foreach (var b in t.TitleID)
                     sb.Append(b.ToString("X2"));
-                Util.Log($"Encrypting Title ID: {sb}");
+                Util.Log($"{mode}crypting Title ID: {sb}, (Key {i + 1} of {titlekeys.Entries.Count})");
 
-                var enc = NetworkUtils.TryEncryptTitleKey(titleID, key, true, (NetworkUtils.TitleKeyType)keyIndex);
-                if (enc == null)
+                var enc = Encrypt
+                    ? NetworkUtils.TryEncryptTitleKey(t.TitleID, t.Key, true, NetworkUtils.TitleKeyType.system)
+                    : NetworkUtils.TryDecryptTitleKey(t.TitleID, t.Key, true, NetworkUtils.TitleKeyType.system);
+                if (enc != null)
                 {
-                    Util.Log("Title Key Encryption failed");
-                    return;
+                    t.Key = enc;
+                    continue;
                 }
-                enc.CopyTo(titlekeys,16+(32*i)+16);
+                Util.Log($"Title Key {mode}cryption failed");
+                return;
             }
-            File.WriteAllBytes(opts.OutputFile != "" ? opts.OutputFile : "encTitleKeys.bin", titlekeys);
-            Util.Log("Title Key encryption completed successfully");
+            titlekeys.WriteFile(outfilename);
+            Util.Log($"Title Key {mode.ToLower()}cryption completed successfully");
+        }
+    }
+
+    class TitleKeys
+    {
+        public List<TitleKeyEntry> Entries = new List<TitleKeyEntry>();
+        public byte[] Reserved;
+        public TitleKeys(string filename)
+        {
+            using (var fs = File.OpenRead(filename))
+            using (var br = new BinaryReader(fs))
+            {
+                var count = br.ReadUInt32();
+                Reserved = br.ReadBytes(12);
+                for (var i = 0; i < count; i++)
+                {
+                    var entry = new TitleKeyEntry
+                    {
+                        IndexTopBytes = br.ReadBytes(3),
+                        Index = br.ReadByte(),
+                        Reserved = br.ReadUInt32(),
+                        TitleID = br.ReadBytes(8),
+                        Key = br.ReadBytes(16)
+                    };
+                    if (entry.Index >= 6)
+                        entry.Index = 0;
+                    Entries.Add(entry);
+                }
+            }
         }
 
-        static void DecryptTitleKeys()
+        public TitleKeys()
         {
-            Util.Log("Decrypting Title keys");
-            var titlekeys = File.ReadAllBytes(opts.InputFile);
-            var numkeys = BitConverter.ToInt32(titlekeys, 0);
-            for (var i = 0; i < numkeys; i++)
-            {
-                var titleID = new byte[8];
-                var key = new byte[16];
-                var keyIndex = BitConverter.ToInt32(titlekeys, 16 + (32 * i));
-
-                Array.Copy(titlekeys, 16 + (32 * i) + 8, titleID, 0, 8);
-                Array.Copy(titlekeys, 16 + (32 * i) + 16, key, 0, 16);
-
-                var sb = new StringBuilder();
-                foreach (var b in titleID)
-                    sb.Append(b.ToString("X2"));
-                Util.Log($"Decrypting Title ID: {sb}");
-
-                var enc = NetworkUtils.TryDecryptTitleKey(titleID, key, true, (NetworkUtils.TitleKeyType)keyIndex);
-                if (enc == null)
-                {
-                    Util.Log("Title Key Decryption failed");
-                    return;
-                }
-                enc.CopyTo(titlekeys, 16 + (32 * i) + 16);
-            }
-            File.WriteAllBytes(opts.OutputFile != "" ? opts.OutputFile : "decTitleKeys.bin", titlekeys);
-            Util.Log("Title Key decryption completed successfully");
+            Reserved = new byte[12];
         }
+
+        public void WriteFile(string filename)
+        {
+            using (var fs = File.OpenWrite(filename))
+            using (var bw = new BinaryWriter(fs))
+            {
+                bw.Write(Entries.Count);
+                bw.Write(0xFFFFFFFF);
+                bw.Write(0xFFFFFFFF);
+                bw.Write(0xFFFFFFFF);
+                foreach (var t in Entries)
+                {
+                    bw.Write(t.IndexTopBytes);
+                    bw.Write(t.Index);
+                    bw.Write(0xFFFFFFFF);
+                    bw.Write(t.TitleID);
+                    bw.Write(t.Key);
+                }
+            }
+        }
+
+    }
+
+    class TitleKeyEntry
+    {
+        public byte[] IndexTopBytes;
+        public byte Index;
+        public uint Reserved;
+        public byte[] TitleID;
+        public byte[] Key;
     }
 }
