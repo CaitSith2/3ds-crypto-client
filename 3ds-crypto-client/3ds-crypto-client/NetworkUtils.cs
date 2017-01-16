@@ -141,34 +141,23 @@ namespace _3ds_crypto_client
             catch (Exception e)
             {
                 ex = e;
-                sock.Close();
             }
 
+            sock.Close();
             return dec;
         }
 
         public enum CryptoMode
         {
-            CBC_Enc,
-            CBC_Dec,
-            CTR_Enc,
-            CTR_Dec,
-            CCM_Enc,
-            CCM_Dec
+            CBC_Enc,CBC_Dec,
+            CTR_Enc,CTR_Dec,
+            CCM_Enc,CCM_Dec
         }
 
         public enum PSPXI_AES
         {
-            ClCertA = 0,
-            UDS_WLAN,
-            MiiQR,
-            BOSS,
-            Unknown,
-            DownloadPlay,
-            StreetPass,
-            //Invalid = 7,
-            Friends = 8,
-            NFC
+            ClCertA,UDS_WLAN,MiiQR,BOSS,Unknown,
+            DownloadPlay,StreetPass,Invalid,Friends,NFC
         }
 
         public static byte[] TryDecryptData(byte[] data, CryptoMode mode, PSPXI_AES pspxi, byte[] iv, int ofs = 0)
@@ -197,12 +186,9 @@ namespace _3ds_crypto_client
 
         public enum TitleKeyType
         {
-            system,
-            eshop,
-            unknown1,
-            unknwon2,
-            unknown3,
-            unknown4,
+            system,eshop,
+            unknown1,unknwon2,
+            unknown3,unknown4,
         }
 
         private static readonly byte[][] TitleKeyYs =
@@ -235,6 +221,8 @@ namespace _3ds_crypto_client
         {
             var iv = new byte[16];
             titleID.CopyTo(iv, 0);
+            if ((int) type >= 6)
+                type = TitleKeyType.system;
             return TryDecryptData(key, CryptoMode.CBC_Enc, 0x3D, iv, 0, TitleKeyYs[(int)type + (Retail ? 0 : 6)]);
         }
 
