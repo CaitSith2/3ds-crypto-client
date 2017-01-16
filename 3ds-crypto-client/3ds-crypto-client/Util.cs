@@ -11,14 +11,16 @@ namespace _3ds_crypto_client
         private static StreamWriter log;
         private static string logFile;
 
-        public static void NewLogFile(string programname)
+        public static void NewLogFile(string programname, string copyright)
         {
             var now = DateTime.Now;
             Directory.CreateDirectory("logs");
             logFile = $"logs/{now.ToString("MMMM dd, yyyy - HH-mm-ss")}.log";
             log = new StreamWriter(logFile, false, Encoding.Unicode);
             Log(programname);
+            Log(copyright);
             Log($"{now.ToString("MMMM dd, yyyy - HH-mm-ss")}");
+            Log();
         }
 
         public static void CloseLogFile(bool keeplog)
@@ -28,7 +30,7 @@ namespace _3ds_crypto_client
                 File.Delete(logFile);
         }
 
-        public static void Log(string msg, bool newline = true)
+        public static void Log(string msg="", bool newline = true)
         {
             if (newline)
             {
