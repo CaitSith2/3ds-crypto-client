@@ -3,46 +3,66 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CommandLine;
+using CommandLine.Text;
 
 namespace _3ds_crypto_client
 {
-    class Program
+    internal class Program
     {
+        public static string heading = new HeadingInfo("3DS Crypto Client", "v1.0");
+        public static string copyright = new CopyrightInfo("CaitSith2", 2017);
+
         private static bool keep_log;
         public static Options opts = new Options();
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             var parser = new Parser();
-            if (!parser.ParseArguments(args, opts))
+            if (!parser.ParseArguments(args, opts) || opts.help)
             {
                 Console.WriteLine(opts.GetUsage());
                 return;
             }
 
-            Util.NewLogFile("3DS Crypto Client v1.0", "Copyright (C) 2017 CaitSith2");
+            opts = opts.GetSettings();
+            Util.NewLogFile(heading,copyright);
             
             NetworkUtils.SetCryptoIPAddress(IPAddress.Parse(opts.InputIP));
-            if (!NetworkUtils.TestCryptoServer())
-            {
-                return;
-            }
 
-            switch (opts.Mode)
+            try
             {
-                case CryptoOperation.DecryptTitleKeys:
-                case CryptoOperation.EncryptTitleKeys:
-                    CryptTitleKeys(opts.Mode == CryptoOperation.EncryptTitleKeys);
-                    break;
+                Util.Log($"Testing Crypto Server ({opts.InputIP})...");
+                if (NetworkUtils.TestCryptoServer())
+                {
+                    switch (opts.Mode)
+                    {
+                        case CryptoOperation.DecryptTitleKeys:
+                        case CryptoOperation.EncryptTitleKeys:
+                            CryptTitleKeys(opts.Mode == CryptoOperation.EncryptTitleKeys);
+                            break;
+                        case CryptoOperation.EncryptBOSS:
+                        case CryptoOperation.DecryptBOSS:
+                        default:
+                            Util.Log($"Operation {opts.Mode} not Implemented yet");
+                            break;
+                    }
+                }
             }
-            Util.CloseLogFile(true);
+            catch (Exception e)
+            {
+                Util.Log($"Operation {opts.Mode} failed due to an Exception: {e.Message}");
+                if(opts.KeepLog == KeepLogSetting.ExceptionsOnly)
+                    opts.KeepLog = KeepLogSetting.Always;
+            }
+            Util.CloseLogFile(opts.KeepLog == KeepLogSetting.Always);
         }
 
-        static void CryptTitleKeys(bool Encrypt)
+        private static void CryptTitleKeys(bool Encrypt)
         {
             var basefilename = Encrypt ? "decTitleKeys.bin" : "endTitleKeys.bin";
             var mode = Encrypt ? "En" : "De";
@@ -66,7 +86,7 @@ namespace _3ds_crypto_client
                     t.Key = enc;
                     continue;
                 }
-                Util.Log($"Title Key {mode}cryption failed");
+                Util.Log($"Title Key {mode}cryption failed {NetworkUtils.GetExceptionString()}");
                 return;
             }
             titlekeys.WriteFile(outfilename);
@@ -74,7 +94,7 @@ namespace _3ds_crypto_client
         }
     }
 
-    class TitleKeys
+    internal class TitleKeys
     {
         public List<TitleKeyEntry> Entries = new List<TitleKeyEntry>();
         public byte[] Reserved;
@@ -129,7 +149,7 @@ namespace _3ds_crypto_client
 
     }
 
-    class TitleKeyEntry
+    internal class TitleKeyEntry
     {
         public byte[] IndexTopBytes;
         public byte Index;
