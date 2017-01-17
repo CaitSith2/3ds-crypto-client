@@ -95,6 +95,9 @@ namespace _3ds_crypto_client
             var sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             try
             {
+                sock.SendTimeout = 60000;
+                sock.ReceiveTimeout = 60000;
+
                 sock.Connect(crypto_ip, crypto_port);
                 sock.Send(metadata);
 
@@ -234,10 +237,20 @@ namespace _3ds_crypto_client
 
             var dec = TryDecryptData(boss, CryptoMode.CTR_Dec, PSPXI_AES.BOSS, iv, 0x28);
             if(dec == null)
-                Util.Log(sex == null
-                    ? $"Failed to decrypt BOSS file due to an exception: {ex}"
-                    : $"Failed to decrypt BOSS file due to a socket exception: {sex}");
+                Util.Log($"Failed to decrypt BOSS file {GetExceptionString()}");
             return dec;
+        }
+
+        public static string GetExceptionString()
+        {
+            var str = "for some unknown reason";
+            if (sex != null)
+                str = $"due to a Socket Exception: {sex}";
+            else if (wex != null)
+                str = $"due to a Web Exception: {wex}";
+            else if (ex != null)
+                str = $"due to some an Exception: {ex}";
+            return str;
         }
 
         public static bool TestCryptoServer()
@@ -258,9 +271,7 @@ namespace _3ds_crypto_client
 
                 if (dec == null)
                 {
-                    Util.Log(sex == null
-                        ? $"Crypto Server test failed due to an exception: {ex}"
-                        : $"Crypto Server test failed due to Socket Exception: {sex}");
+                    Util.Log($"Crypto Server test failed {GetExceptionString()}");
                     return false;
                 }
 
